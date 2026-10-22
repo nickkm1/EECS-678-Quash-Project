@@ -53,7 +53,7 @@ const char* lookup_env(const char* env_var) {
   const char* val = getenv(env_var);
 
   // if getenv returns NULL, return empty string to avoid crash
-  if (val = NULL); {
+  if (val == NULL); {
     return "";
   }
   
@@ -102,12 +102,18 @@ void run_generic(GenericCommand cmd) {
   char* exec = cmd.args[0];
   char** args = cmd.args;
 
+
+
   // TODO: Remove warning silencers
-  (void) exec; // Silence unused variable warning
-  (void) args; // Silence unused variable warning
+  // (void) exec; // Silence unused variable warning
+  // (void) args; // Silence unused variable warning
+
 
   // TODO: Implement run generic
-  IMPLEMENT_ME();
+  // IMPLEMENT_ME();
+  
+  // run execvp, exec= the command, and args = the arguments for the command
+  execvp(exec, args);
 
   perror("ERROR: Failed to execute program");
 }
@@ -118,11 +124,23 @@ void run_echo(EchoCommand cmd) {
   // string is always NULL) list of strings.
   char** str = cmd.args;
 
+  // loop until null
+  for (int i = 0; str[i] != NULL; i++) {
+    // add a space between all except the first one
+        if (i > 0) {
+            printf(" ");
+        }
+        // print the array at the index of i
+        printf("%s", str[i]);
+    }
+  // new line
+  printf("\n");  
+
   // TODO: Remove warning silencers
-  (void) str; // Silence unused variable warning
+  // (void) str; // Silence unused variable warning
 
   // TODO: Implement echo
-  IMPLEMENT_ME();
+  // IMPLEMENT_ME();
 
   // Flush the buffer before returning
   fflush(stdout);
@@ -135,12 +153,16 @@ void run_export(ExportCommand cmd) {
   const char* val = cmd.val;
 
   // TODO: Remove warning silencers
-  (void) env_var; // Silence unused variable warning
-  (void) val;     // Silence unused variable warning
+  // (void) env_var; // Silence unused variable warning
+  // (void) val;     // Silence unused variable warning
 
   // TODO: Implement export.
   // HINT: This should be quite simple.
-  IMPLEMENT_ME();
+  // IMPLEMENT_ME();
+
+  // use the setenv function to make env_var the name of it and val what's stored in it
+  // 1 allows for it to be overwritten
+  setenv(env_var, val, 1); 
 }
 
 // Changes the current working directory
@@ -181,10 +203,13 @@ void run_pwd() {
   // TODO: Print the current working directory
   char* cwd = get_current_dir_name();
   
-
-  printf("%s\n", cwd);
-  
-
+  // if there isn't a cwd then skip
+  if (cwd != NULL) {
+        // print the cwd
+        printf("%s\n", cwd);
+        // free memory because cwd uses malloc
+        free(cwd);
+    }
   // Flush the buffer before returning
   fflush(stdout);
 }
@@ -317,12 +342,37 @@ void create_process(CommandHolder holder) {
   (void) r_app; // Silence unused variable warning
 
   // TODO: Setup pipes, redirects, and new process
-  IMPLEMENT_ME();
+  // IMPLEMENT_ME();
+
+  CommandType type = get_command_type(holder.cmd);
+
+  if (type == CD || type == EXPORT || type == KILL) {
+    parent_run_command(holder.cmd);
+    return;
+  }
+
+  pid_t pid = fork();
+
+  if (pid < 0){
+    // fork fail
+    perror("ERROR: Failed to fork");
+      return -1;
+  }else if(pid == 0){
+    // run child process
+    child_run_command(holder.cmd);
+    exit(EXIT_SUCCESS);
+  }else{
+    // run parent process
+    parent_run_command(holder.cmd);
+    // Wait for child to finish
+    waitpid(pid, NULL, 0);
+  }
 
   //parent_run_command(holder.cmd); // This should be done in the parent branch of
                                   // a fork
   //child_run_command(holder.cmd); // This should be done in the child branch of a fork
 }
+
 
 // Run a list of commands
 void run_script(CommandHolder* holders) {
