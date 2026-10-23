@@ -199,6 +199,7 @@ void run_cd(CDCommand cmd) {
   // Free the memory allocated by realpath
   free(path);
 }
+}
 
 
   // TODO: Change directory
@@ -351,7 +352,7 @@ void parent_run_command(Command cmd) {
  *
  * @sa Command CommandHolder
  */
-void create_process(CommandHolder holder) {
+pid_t create_process(CommandHolder holder) {
   // Read the flags field from the parser
   bool p_in  = holder.flags & PIPE_IN;
   bool p_out = holder.flags & PIPE_OUT;
@@ -372,26 +373,26 @@ void create_process(CommandHolder holder) {
 
   CommandType type = get_command_type(holder.cmd);
 
+  // if the command is a parent command make sure a parent runs its
   if (type == CD || type == EXPORT || type == KILL) {
     parent_run_command(holder.cmd);
-    return;
+    // no child being created 
+    return -1;
   }
 
   pid_t pid = fork();
 
-  if (pid < 0){
+  if(pid < 0){
     // fork fail
     perror("ERROR: Failed to fork");
-      return;
+    return -1;
   }else if(pid == 0){
     // run child process
     child_run_command(holder.cmd);
     exit(EXIT_SUCCESS);
   }else{
-    // run parent process
-    parent_run_command(holder.cmd);
-    // Wait for child to finish
-    waitpid(pid, NULL, 0);
+    // parent returns the child pid
+    return pid;
   }
 
   //parent_run_command(holder.cmd); // This should be done in the parent branch of
@@ -400,36 +401,64 @@ void create_process(CommandHolder holder) {
 }
 
 
-// Run a list of commands
+
+ // Run a list of commands
 void run_script(CommandHolder* holders) {
+  pid_t pids[100];
+  int count = 0;
+
   if (holders == NULL)
     return;
 
   check_jobs_bg_status();
 
-  if (get_command_holder_type(holders[0]) == EXIT &&
-      get_command_holder_type(holders[1]) == EOC) {
+  // if the user tries to exit without any other commands, then exit
+  if (get_command_holder_type(holders[0]) == EXIT && get_command_holder_type(holders[1]) == EOC) {
     end_main_loop();
     return;
   }
 
+  // get what type of command it is
   CommandType type;
 
-  // Run all commands in the `holder` array
-  for (int i = 0; (type = get_command_holder_type(holders[i])) != EOC; ++i)
-    create_process(holders[i]);
+  // loop thru all commands in the `holder` array
+  for (int i = 0; (type = get_command_holder_type(holders[i])) != EOC; ++i) {
+    // make a process and a pid
+    pid_t pid = create_process(holders[i]);
 
+
+    // check if a child pid was created 
+    if (pid > 0) {
+      // store the pid in the array and make sure we dont go over 100
+      if (count < 100) {
+        pids[count] = pid;
+        count++;
+      }
+      else {
+        // other print error message and wait for the child to finish
+        fprintf(stderr, "ERROR: Too many child processes\n");
+        waitpid(pid, NULL, 0);
+      }
+    }
+  }
+  // check if the job is not a background job
   if (!(holders[0].flags & BACKGROUND)) {
     // Not a background Job
     // TODO: Wait for all processes under the job to complete
-    IMPLEMENT_ME();
+    // IMPLEMENT_ME();
+
+    // wait for all child processes to finish
+    for (int i = 0; i < count; i++) {
+      waitpid(pids[i], NULL, 0);
+    }
   }
   else {
-    // A background job.
+    // code for background job, not done yet.
     // TODO: Push the new job to the job queue
-    IMPLEMENT_ME();
+    // IMPLEMENT_ME();
 
     // TODO: Once jobs are implemented, uncomment and fill the following line
     // print_job_bg_start(job_id, pid, cmd);
   }
 }
+
