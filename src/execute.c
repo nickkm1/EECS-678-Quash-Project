@@ -356,7 +356,7 @@ void create_process(CommandHolder holder) {
   if (pid < 0){
     // fork fail
     perror("ERROR: Failed to fork");
-      return -1;
+      return;
   }else if(pid == 0){
     // run child process
     child_run_command(holder.cmd);
