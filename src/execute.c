@@ -130,22 +130,45 @@ const char* lookup_env(const char* env_var) {
 
 // Check the status of background jobs
 void check_jobs_bg_status() {
-  // TODO: Check on the statuses of all processes belonging to all background
-  // jobs. This function should remove jobs from the jobs queue once all
-  // processes belonging to a job have completed.
-  IMPLEMENT_ME();
+  if (!job_queue_initialized)
+    return;
 
-  // TODO: Once jobs are implemented, uncomment and fill the following line
-  // print_job_bg_complete(job_id, pid, cmd);
+  int length = length_JobQueue(&background_jobs);
+  
+  // iterate through the job queue
+  for (int i = 0; i < length; i++) {
+    Job job = peek_front_JobQueue(&background_jobs);
+    
+    // pop it temporarily to process it, will push it back if it is still running
+    pop_front_JobQueue(&background_jobs);
+
+    bool all_completed = true;
+
+    // check all processes belonging to this job
+    for (int p = 0; p < job.pid_count; p++) {
+      int status;
+      // WNOHANG polls without blocking
+      pid_t result = waitpid(job.pids[p], &status, WNOHANG);
+      
+      if (result == 0) {
+        // process is still running
+        all_completed = false;
+      }
+    }
+
+
+    if (all_completed) {
+      // print completion message
+      print_job_bg_complete(job.job_id, job.pids[0], job.cmd);
+      // free allocated memory for PIDs and command string
+      free(job.pids);
+      free(job.cmd);
+    } else {
+      // put it back in the queue if it's still running
+      push_back_JobQueue(&background_jobs, job);
+    }
+  }
 }
-
-// Prints the job id number, the process id of the first process belonging to
-// the Job, and the command string associated with this job
-void print_job(int job_id, pid_t pid, const char* cmd) {
-  printf("[%d]\t%8d\t%s\n", job_id, pid, cmd);
-  fflush(stdout);
-}
-
 // Prints a start up message for background processes
 void print_job_bg_start(int job_id, pid_t pid, const char* cmd) {
   printf("Background job started: ");
@@ -285,12 +308,37 @@ void run_kill(KillCommand cmd) {
   int signal = cmd.sig;
   int job_id = cmd.job;
 
-  // TODO: Remove warning silencers
-  (void) signal; // Silence unused variable warning
-  (void) job_id; // Silence unused variable warning
+  if (!job_queue_initialized) {
+    fprintf(stderr, "ERROR: No background jobs running\n");
+    return;
+  }
 
-  // TODO: Kill all processes associated with a background job
-  IMPLEMENT_ME();
+  bool found = false;
+  int length = length_JobQueue(&background_jobs);
+
+  // want to find the job without destroying the queue order, 
+  // so we can pop and push elements back
+  for (int i = 0; i < length; i++) {
+    Job job = peek_front_JobQueue(&background_jobs);
+    pop_front_JobQueue(&background_jobs);
+
+    if (job.job_id == job_id) {
+      found = true;
+      // send the signal to all processes in this job
+      for (int p = 0; p < job.pid_count; p++) {
+        if (kill(job.pids[p], signal) < 0) {
+          perror("ERROR: Failed to send signal to process");
+        }
+      }
+    }
+
+    // push the job back into the queue to preserve it
+    push_back_JobQueue(&background_jobs, job);
+  }
+
+  if (!found) {
+    fprintf(stderr, "ERROR: No such job: [%d]\n", job_id);
+  }
 }
 
 
