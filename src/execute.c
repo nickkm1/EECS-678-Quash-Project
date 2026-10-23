@@ -53,7 +53,7 @@ const char* lookup_env(const char* env_var) {
   const char* val = getenv(env_var);
 
   // if getenv returns NULL, return empty string to avoid crash
-  if (val == NULL); {
+  if (val == NULL) {
     return "";
   }
   
