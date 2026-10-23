@@ -191,7 +191,7 @@ void run_cd(CDCommand cmd) {
     // free the data
     free(path);
     return;
-    }
+  
 
   // Update the PWD variable with the new path
   setenv("PWD", path, 1);
@@ -199,6 +199,16 @@ void run_cd(CDCommand cmd) {
   // Free the memory allocated by realpath
   free(path);
 }
+
+
+  // TODO: Change directory
+
+  // TODO: Update the PWD environment variable to be the new current working
+  // directory and optionally update OLD_PWD environment variable to be the old
+  // working directory.
+  //IMPLEMENT_ME();
+
+
 
 // Sends a signal to all processes contained in a job
 void run_kill(KillCommand cmd) {
