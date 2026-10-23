@@ -17,7 +17,9 @@
 
 #include <unistd.h>
 
-#include "deque.h" 
+#include "deque.h"
+
+#include <limits.h>
 
 // struct for job and info around the job
 typedef struct Job {
@@ -82,20 +84,31 @@ static void add_job(int job_id, pid_t* pids, int num_pids, char* cmd) {
 // IMPLEMENTED: functions on lines 26-43, 47-61, 179-191
 // Return a string containing the current working directory.
 char* get_current_directory(bool* should_free) {
-  // TODO: Get the current working directory. This will fix the prompt path.
-  // HINT: This should be pretty simple
-  char* cwd = get_current_dir_name();
-  
 
-  // Change this to true if necessary
-  // added allocation failure if necessary
+  // get the path and allocate memory for it
+  char* cwd = malloc(PATH_MAX);
+
+  // if there is no path then 
   if (cwd == NULL) {
-  *should_free = false;
-  return "";
+    // false because no memory was actually used
+    *should_free = false;
+    // return an empty string
+    return "";
   }
-  // tell quash to free memory allocated by get_current_dir_name
-  *should_free = true;
 
+  // store the path inside of cwd, if it fails then go into the if statement
+  if (getwd(cwd) == NULL) {
+    // free the memory allocated to it
+    free(cwd);
+    // because we just freed it
+    *should_free = false;
+    // return empty string
+    return "";
+  }
+
+  // should actually be freed because there's something 
+  *should_free = true;
+  // return the cwd
   return cwd;
 }
 
@@ -284,16 +297,18 @@ void run_kill(KillCommand cmd) {
 // Prints the current working directory to stdout
 void run_pwd() {
   // TODO: Print the current working directory
-  char* cwd = get_current_dir_name();
-  
-  // if there isn't a cwd then skip
-  if (cwd != NULL) {
-        // print the cwd
-        printf("%s\n", cwd);
-        // free memory because cwd uses malloc
-        free(cwd);
-    }
-  // Flush the buffer before returning
+
+  // create a cwd array
+  char cwd[PATH_MAX];
+
+  // get the working directory and store it in cwd array
+  if (getwd(cwd) != NULL){
+    // newline and print the cwd
+    printf("%s\n", cwd);
+  } else {
+    // if it fails then print this error
+    perror("ERROR: Failed to get current directory");
+  }
   fflush(stdout);
 }
 
@@ -306,19 +321,19 @@ void run_jobs() {
         return;
     }
 
-    int length = length_JobQueue(&background_jobs);
+  int length = length_JobQueue(&background_jobs);
 
-    for (int i = 0; i < length; i++) {
-        Job job = peek_front_JobQueue(&background_jobs);
+  for (int i = 0; i < length; i++) {
+    Job job = peek_front_JobQueue(&background_jobs);
 
-        print_job(job.job_id, job.pids[0], job.cmd);
+    print_job(job.job_id, job.pids[0], job.cmd);
 
-        pop_front_JobQueue(&background_jobs);
-        push_back_JobQueue(&background_jobs, job);
-    }
+    pop_front_JobQueue(&background_jobs);
+    push_back_JobQueue(&background_jobs, job);
+  }
 
-    // Flush the buffer before returning
-    fflush(stdout);
+  // Flush the buffer before returning
+  fflush(stdout);
 }
 
 /***************************************************************************
