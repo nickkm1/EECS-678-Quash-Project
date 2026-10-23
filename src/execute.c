@@ -41,12 +41,16 @@ IMPLEMENT_DEQUE(JobQueue, Job);
 static JobQueue background_jobs;
 static bool job_queue_initialized = false;
 
-/* Helper to add a background job */
+/**
+ * @brief Helper to add a background job to the job queue
+ */
 static void add_job(int job_id, pid_t* pids, int num_pids, char* cmd) {
+    // ensure there is at least one valid process ID associated with the job
     if (num_pids <= 0) {
         return;
     }
 
+    // initialize the background job queue lazily if it hasn't been initialized yet
     if (!job_queue_initialized) {
         background_jobs = new_JobQueue(10);
         job_queue_initialized = true;
@@ -54,23 +58,26 @@ static void add_job(int job_id, pid_t* pids, int num_pids, char* cmd) {
 
     Job job;
 
+   
     job.job_id = job_id;
     job.pid_count = num_pids;
     job.cmd = cmd;
 
+    // allocate memory to store all process IDs belonging to this job
     job.pids = malloc(sizeof(pid_t) * num_pids);
     if (job.pids == NULL) {
         perror("malloc");
         return;
     }
 
+    // copy over each process ID into the job's allocated pid array
     for (int i = 0; i < num_pids; i++) {
         job.pids[i] = pids[i];
     }
 
+    // push newly created job onto the back of the background job queue
     push_back_JobQueue(&background_jobs, job);
 }
-
 
 // Remove this and all expansion calls to it
 /**
@@ -372,23 +379,31 @@ void run_pwd() {
 
 // Prints all background jobs currently in the job list to stdout
 void run_jobs() {
-  // TODO: Print background jobs
-  // IMPLEMENT_ME();
-
+  // if the job queue has never been initialized, there are no jobs to print
   if (!job_queue_initialized) {
         return;
     }
 
+  // get the current number of background jobs in the queue
   int length = length_JobQueue(&background_jobs);
 
+  // iterate through every job currently in the queue
   for (int i = 0; i < length; i++) {
+    // peek at the job at the front of the queue
     Job job = peek_front_JobQueue(&background_jobs);
 
+    // print the job's ID, the PID of its first process, and its command string
     print_job(job.job_id, job.pids[0], job.cmd);
 
+    // rotate the queue: pop the front job and push it to the back 
+    // so the queue order remains intact after inspection
     pop_front_JobQueue(&background_jobs);
     push_back_JobQueue(&background_jobs, job);
   }
+
+  // Flush the buffer before returning
+  fflush(stdout);
+}
 
   // Flush the buffer before returning
   fflush(stdout);
