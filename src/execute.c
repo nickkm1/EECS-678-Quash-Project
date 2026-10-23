@@ -17,28 +17,57 @@
 
 #include <unistd.h>
 
-#include "deque.h"
+#include "deque.h" 
 
-// first, define what a job looks like
+// struct for job and info around the job
 typedef struct Job {
-  int job_id;
-  pid_t* pids;       // array of PIDs for this job (supports pipes like cmd1 | cmd2)
-  int pid_count;     // number of processes
-  char* cmd;         // command string (fetched using get_command_string())
+  // job id
+    int job_id;
+    // process id
+    pid_t* pids;
+    // number of processes
+    int pid_count;
+    // inputted command string
+    char* cmd;
 } Job;
 
-// generate the deque data structure
 IMPLEMENT_DEQUE_STRUCT(JobQueue, Job);
 IMPLEMENT_DEQUE(JobQueue, Job);
-
 
 static JobQueue background_jobs;
 static bool job_queue_initialized = false;
 
-// initialize the job queue when it is first needed.
-// this cannot be assigned at file scope because `new_JobQueue()` is not a
-// constant expression in C.
-static int previous_pipe_read_fd = -1;
+/* Helper to add a background job */
+static void add_job(int job_id, pid_t* pids, int num_pids, char* cmd) {
+    if (num_pids <= 0) {
+        return;
+    }
+
+    if (!job_queue_initialized) {
+        background_jobs = new_JobQueue(10);
+        job_queue_initialized = true;
+    }
+
+    Job job;
+
+    job.job_id = job_id;
+    job.pid_count = num_pids;
+    job.cmd = cmd;
+
+    job.pids = malloc(sizeof(pid_t) * num_pids);
+    if (job.pids == NULL) {
+        perror("malloc");
+        return;
+    }
+
+    for (int i = 0; i < num_pids; i++) {
+        job.pids[i] = pids[i];
+    }
+
+    push_back_JobQueue(&background_jobs, job);
+}
+
+
 // Remove this and all expansion calls to it
 /**
  * @brief Note calls to any function that requires implementation
@@ -46,13 +75,11 @@ static int previous_pipe_read_fd = -1;
 #define IMPLEMENT_ME()                                                  \
   fprintf(stderr, "IMPLEMENT ME: %s(line %d): %s()\n", __FILE__, __LINE__, __FUNCTION__)
 
-
-
 /***************************************************************************
  * Interface Functions
  ***************************************************************************/
 
-
+// IMPLEMENTED: functions on lines 26-43, 47-61, 179-191
 // Return a string containing the current working directory.
 char* get_current_directory(bool* should_free) {
   // TODO: Get the current working directory. This will fix the prompt path.
@@ -90,52 +117,29 @@ const char* lookup_env(const char* env_var) {
 
 // Check the status of background jobs
 void check_jobs_bg_status() {
-  if (!job_queue_initialized)
-    return;
+  // TODO: Check on the statuses of all processes belonging to all background
+  // jobs. This function should remove jobs from the jobs queue once all
+  // processes belonging to a job have completed.
+  IMPLEMENT_ME();
 
-  int length = length_JobQueue(&background_jobs);
-  
-  // iterate through the job queue
-  for (int i = 0; i < length; i++) {
-    Job job = peek_front_JobQueue(&background_jobs);
-    
-    // pop it temporarily to process it, will push it back if it is still running
-    pop_front_JobQueue(&background_jobs);
-
-    bool all_completed = true;
-
-    // check all processes belonging to this job
-    for (int p = 0; p < job.pid_count; p++) {
-      int status;
-      // WNOHANG polls without blocking
-      pid_t result = waitpid(job.pids[p], &status, WNOHANG);
-      
-      if (result == 0) {
-        // process is still running
-        all_completed = false;
-      }
-    }
-
-    if (all_completed) {
-      // print completion message
-      print_job_bg_complete(job.job_id, job.pids[0], job.cmd);
-      // free allocated memory for PIDs and command string
-      free(job.pids);
-      free(job.cmd);
-    } else {
-      // put it back in the queue if it's still running
-      push_back_JobQueue(&background_jobs, job);
-    }
-  }
+  // TODO: Once jobs are implemented, uncomment and fill the following line
+  // print_job_bg_complete(job_id, pid, cmd);
 }
 
-// prints a start up message for background processes
+// Prints the job id number, the process id of the first process belonging to
+// the Job, and the command string associated with this job
+void print_job(int job_id, pid_t pid, const char* cmd) {
+  printf("[%d]\t%8d\t%s\n", job_id, pid, cmd);
+  fflush(stdout);
+}
+
+// Prints a start up message for background processes
 void print_job_bg_start(int job_id, pid_t pid, const char* cmd) {
   printf("Background job started: ");
   print_job(job_id, pid, cmd);
 }
 
-// prints a completion message followed by the print job
+// Prints a completion message followed by the print job
 void print_job_bg_complete(int job_id, pid_t pid, const char* cmd) {
   printf("Completed: \t");
   print_job(job_id, pid, cmd);
@@ -193,7 +197,7 @@ void run_echo(EchoCommand cmd) {
   // TODO: Implement echo
   // IMPLEMENT_ME();
 
-  // flush the buffer before returning
+  // Flush the buffer before returning
   fflush(stdout);
 }
 
@@ -243,6 +247,7 @@ void run_cd(CDCommand cmd) {
     free(path);
     return;
   }
+  
 
   // Update the PWD variable with the new path
   setenv("PWD", path, 1);
@@ -267,38 +272,14 @@ void run_kill(KillCommand cmd) {
   int signal = cmd.sig;
   int job_id = cmd.job;
 
-  if (!job_queue_initialized) {
-    fprintf(stderr, "ERROR: No background jobs running\n");
-    return;
-  }
+  // TODO: Remove warning silencers
+  (void) signal; // Silence unused variable warning
+  (void) job_id; // Silence unused variable warning
 
-  bool found = false;
-  int length = length_JobQueue(&background_jobs);
-
-  // want to find the job without destroying the queue order, 
-  // so we can pop and push elements back
-  for (int i = 0; i < length; i++) {
-    Job job = peek_front_JobQueue(&background_jobs);
-    pop_front_JobQueue(&background_jobs);
-
-    if (job.job_id == job_id) {
-      found = true;
-      // send the signal to all processes in this job
-      for (int p = 0; p < job.pid_count; p++) {
-        if (kill(job.pids[p], signal) < 0) {
-          perror("ERROR: Failed to send signal to process");
-        }
-      }
-    }
-
-    // push the job back into the queue to preserve it
-    push_back_JobQueue(&background_jobs, job);
-  }
-
-  if (!found) {
-    fprintf(stderr, "ERROR: No such job: [%d]\n", job_id);
-  }
+  // TODO: Kill all processes associated with a background job
+  IMPLEMENT_ME();
 }
+
 
 // Prints the current working directory to stdout
 void run_pwd() {
@@ -319,10 +300,25 @@ void run_pwd() {
 // Prints all background jobs currently in the job list to stdout
 void run_jobs() {
   // TODO: Print background jobs
-  IMPLEMENT_ME();
+  // IMPLEMENT_ME();
 
-  // Flush the buffer before returning
-  fflush(stdout);
+  if (!job_queue_initialized) {
+        return;
+    }
+
+    int length = length_JobQueue(&background_jobs);
+
+    for (int i = 0; i < length; i++) {
+        Job job = peek_front_JobQueue(&background_jobs);
+
+        print_job(job.job_id, job.pids[0], job.cmd);
+
+        pop_front_JobQueue(&background_jobs);
+        push_back_JobQueue(&background_jobs, job);
+    }
+
+    // Flush the buffer before returning
+    fflush(stdout);
 }
 
 /***************************************************************************
@@ -457,7 +453,7 @@ pid_t create_process(CommandHolder holder) {
   // NOTE: /* SIGPIPE handles writes to pipes whose read end has been closed */
   // tracks the read end of the pipe from the previous process in a pipeline
   
- 
+  static int previous_pipe_read_fd = -1;
   int pipe_fds[2] = {-1, -1};
   // if this command needs to output to a pipe, create the pipe
   if (p_out) {
@@ -561,12 +557,9 @@ pid_t create_process(CommandHolder holder) {
 }
 
 
- // run a list of commands
+
+ // Run a list of commands
 void run_script(CommandHolder* holders) {
-  if (!job_queue_initialized) {
-    background_jobs = new_JobQueue(10); // set initial capacity of 10 by default on startup
-    job_queue_initialized = true;
-  }
   pid_t pids[100];
   int count = 0;
 
@@ -616,6 +609,7 @@ void run_script(CommandHolder* holders) {
     }
   }
   else {
+
     // code for background job, not done yet.
     // TODO: Push the new job to the job queue
     // IMPLEMENT_ME();
@@ -623,5 +617,5 @@ void run_script(CommandHolder* holders) {
     // TODO: Once jobs are implemented, uncomment and fill the following line
     // print_job_bg_start(job_id, pid, cmd);
   }
-  previous_pipe_read_fd = -1; // reset the previous pipe read file descriptor after job finishes
 }
+
