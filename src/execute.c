@@ -175,13 +175,29 @@ void run_cd(CDCommand cmd) {
     perror("ERROR: Failed to resolve path");
     return;
   }
+  // get the absolute path
+  char* path = realpath(dir, NULL);
 
-  // TODO: Change directory
+  // if there is no path
+  if (path == NULL) {
+    // print a fail message
+    perror("ERROR: Failed to resolve path");
+    return;
+  }
+  // change directory 
+  if (chdir(path) == -1) {
+    // it fails to change directories then print this error message
+    perror("ERROR: Failed to change directory");
+    // free the data
+    free(path);
+    return;
+    }
 
-  // TODO: Update the PWD environment variable to be the new current working
-  // directory and optionally update OLD_PWD environment variable to be the old
-  // working directory.
-  IMPLEMENT_ME();
+  // Update the PWD variable with the new path
+  setenv("PWD", path, 1);
+
+  // Free the memory allocated by realpath
+  free(path);
 }
 
 // Sends a signal to all processes contained in a job
