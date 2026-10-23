@@ -681,13 +681,20 @@ void run_script(CommandHolder* holders) {
       waitpid(pids[i], NULL, 0);
     }
   }
-  else {
+  else if (count > 0) {
+    static int next_job_id = 1;
+    int job_id = next_job_id++;
+
+    char* cmd = get_command_string();
+
+    add_job(job_id, pids, count, cmd);
+    print_job_bg_start(job_id, pids[0], cmd);
 
     // code for background job, not done yet.
     // TODO: Push the new job to the job queue
     // IMPLEMENT_ME();
 
     // TODO: Once jobs are implemented, uncomment and fill the following line
-    // print_job_bg_start(job_id, pid, cmd);
+    
   }
 }
