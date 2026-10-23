@@ -21,6 +21,8 @@
 
 #include <limits.h>
 
+#include <signal.h>
+
 // struct for job and info around the job
 typedef struct Job {
   // job id
@@ -169,6 +171,14 @@ void check_jobs_bg_status() {
     }
   }
 }
+
+// Prints the job id number, the process id of the first process belonging to
+// the Job, and the command string associated with this job
+void print_job(int job_id, pid_t pid, const char* cmd) {
+  printf("[%d]\t%8d\t%s\n", job_id, pid, cmd);
+  fflush(stdout);
+}
+
 // Prints a start up message for background processes
 void print_job_bg_start(int job_id, pid_t pid, const char* cmd) {
   printf("Background job started: ");
@@ -681,4 +691,3 @@ void run_script(CommandHolder* holders) {
     // print_job_bg_start(job_id, pid, cmd);
   }
 }
-
