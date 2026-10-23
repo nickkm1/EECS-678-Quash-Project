@@ -13,12 +13,18 @@
 
 #include "quash.h"
 
+#include <fcntl.h>
+
+#include <unistd.h>
+
 // Remove this and all expansion calls to it
 /**
  * @brief Note calls to any function that requires implementation
  */
 #define IMPLEMENT_ME()                                                  \
   fprintf(stderr, "IMPLEMENT ME: %s(line %d): %s()\n", __FILE__, __LINE__, __FUNCTION__)
+
+
 
 /***************************************************************************
  * Interface Functions
@@ -191,7 +197,7 @@ void run_cd(CDCommand cmd) {
     // free the data
     free(path);
     return;
-  
+  }
 
   // Update the PWD variable with the new path
   setenv("PWD", path, 1);
@@ -199,7 +205,7 @@ void run_cd(CDCommand cmd) {
   // Free the memory allocated by realpath
   free(path);
 }
-}
+
 
 
   // TODO: Change directory
@@ -372,37 +378,121 @@ pid_t create_process(CommandHolder holder) {
   // IMPLEMENT_ME();
 
   CommandType type = get_command_type(holder.cmd);
-
+  
   // if the command is a parent command make sure a parent runs its
   if (type == CD || type == EXPORT || type == KILL) {
     parent_run_command(holder.cmd);
     // no child being created 
     return -1;
   }
+  // NOTE: /* SIGPIPE handles writes to pipes whose read end has been closed */
+  // tracks the read end of the pipe from the previous process in a pipeline
+  
+  static int previous_pipe_read_fd = -1;
+  int pipe_fds[2] = {-1, -1};
+  // if this command needs to output to a pipe, create the pipe
+  if (p_out) {
+    if (pipe(pipe_fds) < 0) {
+      perror("ERROR: Failed to create pipe");
+      return -1;
+    }
+  }
+
 
   pid_t pid = fork();
 
   if(pid < 0){
     // fork fail
     perror("ERROR: Failed to fork");
+    if (p_out) {
+      close(pipe_fds[0]);
+      close(pipe_fds[1]);
+    }
     return -1;
-  }else if(pid == 0){
-    // run child process
+  }
+  else if(pid == 0){
+    // --- RUN CHILD PROCESS ---
+
+    // 1. handle ir OR pipe input
+    if (r_in) {
+      // open target file with appropriate permissions
+      int fd_in = open(holder.redirect_in, O_RDONLY); 
+      if (fd_in < 0) {
+        perror("ERROR: Failed to open input file for redirection");
+        exit(EXIT_FAILURE);
+      }
+      // replace standard input with new, opened file desc
+      if (dup2(fd_in, STDIN_FILENO) < 0) {
+        perror("ERROR: Failed to dup2 input file descriptor");
+        close(fd_in);
+        exit(EXIT_FAILURE);
+      }
+      close(fd_in);
+    }
+    else if (p_in) {
+      // read input from the previous pipe's read end
+      if (dup2(previous_pipe_read_fd, STDIN_FILENO) < 0) {
+        perror("ERROR: Failed to dup2 pipe input");
+        exit(EXIT_FAILURE);
+      }
+      close(previous_pipe_read_fd);
+    }
+
+  // output redirection (> or >>)
+  if (r_out) {
+    // choose flags based on whether append (>>) or truncate (>) is requested
+    int flags = O_WRONLY | O_CREAT | (r_app ? O_APPEND : O_TRUNC);
+    // 0644 is used in unix for output redirection in read/write mode for owner, read-only for others
+    int fd_out = open(holder.redirect_out, flags, 0644);
+    if (fd_out < 0) {
+      perror("ERROR: Failed to open output file for redirection");
+      exit(EXIT_FAILURE);
+    }
+    // functionality is similar to input redir, just for output
+    if (dup2(fd_out, STDOUT_FILENO) < 0) {
+      perror("ERROR: Failed to dup2 output file descriptor");
+      /**************** REMEMBER TO CLOSE ORIGINAL FILE DESCRIPTORS TO PREVENT MEMORY LEAKS ****************/
+      close(fd_out); 
+      exit(EXIT_FAILURE);
+    }
+    close(fd_out);
+  }
+  else if (p_out) {
+  // Write output to the current pipe's write end
+    close(pipe_fds[0]); // child doesn't need to read from this pipe
+    if (dup2(pipe_fds[1], STDOUT_FILENO) < 0) {
+      perror("ERROR: Failed to dup2 pipe output");
+      close(pipe_fds[1]);
+      exit(EXIT_FAILURE);
+    }
+      close(pipe_fds[1]);
+    }
+
     child_run_command(holder.cmd);
     exit(EXIT_SUCCESS);
-  }else{
+  }
+  else {
+    // --- PARENT PROCESS ---
+
+    // if there was a previous pipe read end open in the parent, close it
+    if (previous_pipe_read_fd != -1) {
+      close(previous_pipe_read_fd);
+      previous_pipe_read_fd = -1;
+    }
+
+    // if created a pipe for this process, save the read end for the next process in line
+    if (p_out) {
+      close(pipe_fds[1]);
+      previous_pipe_read_fd = pipe_fds[0];
+    }
+
     // parent returns the child pid
     return pid;
   }
-
-  //parent_run_command(holder.cmd); // This should be done in the parent branch of
-                                  // a fork
-  //child_run_command(holder.cmd); // This should be done in the child branch of a fork
 }
 
 
-
- // Run a list of commands
+ // run a list of commands
 void run_script(CommandHolder* holders) {
   pid_t pids[100];
   int count = 0;
@@ -460,5 +550,5 @@ void run_script(CommandHolder* holders) {
     // TODO: Once jobs are implemented, uncomment and fill the following line
     // print_job_bg_start(job_id, pid, cmd);
   }
+  int previous_pipe_read_fd = -1; // reset the previous pipe read file descriptor after job finishes
 }
-
