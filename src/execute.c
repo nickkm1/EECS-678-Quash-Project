@@ -346,7 +346,16 @@ void run_kill(KillCommand cmd) {
       // send the signal to all processes in this job
       for (int p = 0; p < job.pid_count; p++) {
         if (kill(job.pids[p], signal) < 0) {
-          perror("ERROR: Failed to send signal to process");
+          
+      // give the processes a brief moment (up to ~100ms) to exit so the
+      // completion message prints before the next command's output. a
+      // process that ignores or survives the signal is left running
+      for (int p = 0; p < job.pid_count; p++) {
+        for (int tries = 0; tries < 100; tries++) {
+          if (waitpid(job.pids[p], NULL, WNOHANG) != 0) {
+            break;
+          }
+          usleep(1000);
         }
       }
     }
