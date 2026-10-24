@@ -325,10 +325,12 @@ void run_kill(KillCommand cmd) {
   int signal = cmd.sig;
   int job_id = cmd.job;
 
+  // print error if the queue isnt made
   if (!job_queue_initialized) {
     fprintf(stderr, "ERROR: No background jobs running\n");
     return;
   }
+
 
   bool found = false;
   int length = length_JobQueue(&background_jobs);
@@ -406,6 +408,7 @@ void run_jobs() {
 }
 
 
+
 /***************************************************************************
  * Functions for command resolution and process setup
  ***************************************************************************/
@@ -423,7 +426,7 @@ void run_jobs() {
  */
 void child_run_command(Command cmd) {
   CommandType type = get_command_type(cmd);
-
+  // uses a switch to decide which commands are supposed to run 
   switch (type) {
   case GENERIC:
     run_generic(cmd.generic);
@@ -466,7 +469,7 @@ void child_run_command(Command cmd) {
  */
 void parent_run_command(Command cmd) {
   CommandType type = get_command_type(cmd);
-
+  // uses a switch to decide which commands are supposed to run 
   switch (type) {
   case EXPORT:
     run_export(cmd.export);
@@ -693,12 +696,17 @@ void run_script(CommandHolder* holders) {
       waitpid(pids[i], NULL, 0);
     }
   }
+  // handles background jobs, ensures that the there's at least one child process
   else if (count > 0) {
+    // keeps track of next job id
     static int next_job_id = 1;
+    // increments and assigns job_id to the next job
     int job_id = next_job_id++;
 
+    // gets the original input command 
     char* cmd = get_command_string();
 
+    // calls add job and stores the info, then prints it while it runs
     add_job(job_id, pids, count, cmd);
     print_job_bg_start(job_id, pids[0], cmd);
 
