@@ -342,23 +342,25 @@ void run_kill(KillCommand cmd) {
     pop_front_JobQueue(&background_jobs);
 
     if (job.job_id == job_id) {
-      found = true;
-      // send the signal to all processes in this job
-      for (int p = 0; p < job.pid_count; p++) {
+    found = true;
+
+    // send the requested signal to all processes in the job
+    for (int p = 0; p < job.pid_count; p++) {
         if (kill(job.pids[p], signal) < 0) {
-          
-      // give the processes a brief moment (up to ~100ms) to exit so the
-      // completion message prints before the next command's output. a
-      // process that ignores or survives the signal is left running
-      for (int p = 0; p < job.pid_count; p++) {
-        for (int tries = 0; tries < 100; tries++) {
-          if (waitpid(job.pids[p], NULL, WNOHANG) != 0) {
-            break;
-          }
-          usleep(1000);
+            perror("ERROR: Failed to send signal to process");
         }
-      }
     }
+
+    // briefly wait for the signaled processes to finish
+    for (int p = 0; p < job.pid_count; p++) {
+        for (int tries = 0; tries < 100; tries++) {
+            if (waitpid(job.pids[p], NULL, WNOHANG) != 0) {
+                break;
+            }
+            usleep(1000);
+        }
+    }
+}
 
     // push the job back into the queue to preserve it
     push_back_JobQueue(&background_jobs, job);
