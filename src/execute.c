@@ -405,9 +405,6 @@ void run_jobs() {
   fflush(stdout);
 }
 
-  // Flush the buffer before returning
-  fflush(stdout);
-}
 
 /***************************************************************************
  * Functions for command resolution and process setup
